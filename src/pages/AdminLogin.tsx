@@ -2,19 +2,22 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState, AppDispatch } from "../app/store";
 import { loginAdmin, clearAuthError } from "../features/auth/authSlice";
 import { User, Lock, AlertCircle } from "react-feather";
 import headerLogo from "../assets/headerLogo.png";
+import LoadingScreen from "../components/ui/LoadingScreen";
 
 const AdminLogin = () => {
   const { t } = useTranslation();
-  // const navigate = useNavigate();
+  const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
-  const { loading, error } = useSelector((state: RootState) => state.auth);
+  const { loading, error, isAuthenticated, hasInitialized } = useSelector(
+    (state: RootState) => state.auth,
+  );
 
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
@@ -22,21 +25,18 @@ const AdminLogin = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLocalError("");
     dispatch(clearAuthError());
+    if (!studentId.trim() || !password) {
+      setLocalError("Please enter your student ID and password.");
+      return;
+    }
     const result = await dispatch(loginAdmin({ studentId, password }));
     if (loginAdmin.fulfilled.match(result)) {
-      // Reload the page to ensure the cookie is set before session bootstrap
-      window.location.replace("/admin");
+      navigate("/admin", { replace: true });
     }
   };
-
-  // Remove auto-navigation, now handled by reload after login
-  // useEffect(() => {
-  //   if (status === "authenticated" && isAuthenticated) {
-  //     navigate("/admin", { replace: true });
-  //   }
-  // }, [isAuthenticated, navigate, status]);
 
   useEffect(() => {
     if (error) {
@@ -49,6 +49,14 @@ const AdminLogin = () => {
       dispatch(clearAuthError());
     };
   }, [dispatch]);
+
+  if (!hasInitialized) {
+    return <LoadingScreen />;
+  }
+
+  if (isAuthenticated && !loading) {
+    return <Navigate to="/admin" replace />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center py-8 px-4 sm:py-12 sm:px-6 lg:px-8 holy-cross-bg">

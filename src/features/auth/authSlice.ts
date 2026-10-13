@@ -1,9 +1,8 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { api } from "../../api/api";
 import { Admin, DEFAULT_PERMISSIONS, Permissions } from "../../types";
-import { AxiosError } from "axios";
-import Swal from "sweetalert2";
 import type { RootState } from "../../app/store";
+import { getErrorMessage } from "../../api/api";
 
 export type TCurrentUserData = {
   username: string;
@@ -51,21 +50,7 @@ const initialState: AuthState = {
   currentUserData: null,
 };
 
-const extractErrorMessage = (
-  err: unknown,
-  fallback = "Something went wrong",
-) => {
-  const error = err as AxiosError<{ message?: string }>;
-  return error.response?.data?.message || error.message || fallback;
-};
-
-const showLogoutSuccess = async () => {
-  await Swal.fire({
-    title: "Logged out",
-    icon: "success",
-    text: "You have been logged out successfully.",
-  });
-};
+const extractErrorMessage = getErrorMessage;
 
 const buildSessionPayload = (
   user?: CurrentUserResponse["user"],
@@ -163,7 +148,6 @@ export const logoutAdmin = createAsyncThunk<
 >("auth/logoutAdmin", async (_, { rejectWithValue }) => {
   try {
     await api.post("/auth/logout");
-    await showLogoutSuccess();
   } catch (err) {
     return rejectWithValue(extractErrorMessage(err, "Logout failed"));
   }
@@ -180,6 +164,12 @@ const authSlice = createSlice({
       state.hasInitialized = true;
       state.loading = false;
       state.error = null;
+      resetAuthState(state);
+    },
+    sessionExpired: (state) => {
+      state.hasInitialized = true;
+      state.loading = false;
+      state.error = "Your session has expired. Please log in again.";
       resetAuthState(state);
     },
   },
@@ -199,6 +189,8 @@ const authSlice = createSlice({
       })
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.hasInitialized = true;
+        // A login that completed meanwhile wins over the stale probe result.
+        if (state.status === "authenticated") return;
         state.loading = false;
         state.error = null;
         resetAuthState(state);
@@ -244,5 +236,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearAuthError, clearAuthState } = authSlice.actions;
+export const { clearAuthError, clearAuthState, sessionExpired } =
+  authSlice.actions;
 export default authSlice.reducer;

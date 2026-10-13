@@ -127,7 +127,7 @@ const ManageAdmins: React.FC = React.memo(() => {
     [dispatch],
   );
   const navigate = useNavigate();
-  if (loading) return <LoadingScreen />;
+  if (loading && admins.length === 0) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen  px-4 sm:px-10 py-10 pb-16 font-inter ">
@@ -241,7 +241,7 @@ const ManageAdmins: React.FC = React.memo(() => {
             <div className="flex flex-col gap-3" role="list">
               {filteredAdmins.map((admin, i) => (
                 <AdminCard
-                  key={admin.userid || admin.studentid || i}
+                  key={admin.studentid || i}
                   admin={admin}
                   onEdit={openEditModal}
                   onDelete={openDeleteModal}

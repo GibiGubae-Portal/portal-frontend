@@ -18,9 +18,6 @@ export default {
         'poppins': ['Poppins', 'sans-serif'],
         'noto-ethiopic': ['Noto Serif Ethiopic', 'serif'],
       },
-      backgroundImage: {
-        'hero-pattern': "url('/src/assets/backgroundImage.jpg')", 
-      },
     },
   },
   plugins: [],

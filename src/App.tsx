@@ -1,79 +1,74 @@
 import { Suspense, lazy } from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Outlet, RouterProvider } from "react-router-dom";
 import LoadingScreen from "./components/ui/LoadingScreen";
+import RouteError from "./components/ui/RouteError";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 import ProtectedAdminsPage from "./components/auth/protectedAdminsPage";
 import useGetCurrentUser from "./customhook/useGetCurrentUser";
 
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
 const ManageUsers = lazy(() => import("./pages/admin/ManageUsers"));
 const ManageRoles = lazy(() => import("./pages/admin/ManageRoles"));
-
 const Analytics = lazy(() => import("./pages/admin/Analytics"));
-const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
-const ProtectedRoute = lazy(() => import("./components/auth/ProtectedRoute"));
 const SuperAdmin = lazy(() => import("./pages/superAdmin/SuperAdminPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+const RootLayout = () => (
+  <Suspense fallback={<LoadingScreen />}>
+    <Outlet />
+  </Suspense>
+);
+
 const router = createBrowserRouter([
   {
-    path: "/",
-    element: <LandingPage />,
-  },
-  {
-    path: "/admin/login",
-    element: <AdminLogin />,
-  },
-  {
-    path: "/admin",
-    element: (
-      <ProtectedRoute>
-        <AdminDashboard />
-      </ProtectedRoute>
-    ),
+    element: <RootLayout />,
+    errorElement: <RouteError />,
     children: [
+      { path: "/", element: <LandingPage /> },
+      { path: "/admin/login", element: <AdminLogin /> },
       {
-        index: true,
-        element: <Dashboard />,
-      },
-      {
-        path: "users",
-        element: <ManageUsers />,
-      },
-      {
-        path: "manageRoles",
+        path: "/admin",
         element: (
-          <ProtectedAdminsPage>
-            <ManageRoles />
-          </ProtectedAdminsPage>
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
         ),
+        errorElement: <RouteError />,
+        children: [
+          { index: true, element: <Dashboard /> },
+          { path: "users", element: <ManageUsers /> },
+          { path: "analytics", element: <Analytics /> },
+          {
+            path: "manageRoles",
+            element: (
+              <ProtectedAdminsPage>
+                <ManageRoles />
+              </ProtectedAdminsPage>
+            ),
+          },
+          {
+            path: "superadmin",
+            element: (
+              <ProtectedAdminsPage>
+                <SuperAdmin />
+              </ProtectedAdminsPage>
+            ),
+          },
+        ],
       },
-      {
-        path: "superadmin",
-        element: (
-          <ProtectedAdminsPage>
-            <SuperAdmin />
-          </ProtectedAdminsPage>
-        ),
-      },
-      {
-        path: "analytics",
-        element: <Analytics />,
-      },
+      { path: "*", element: <NotFound /> },
     ],
   },
 ]);
+
 function App() {
-  const { hasInitialized } = useGetCurrentUser();
-
-  if (!hasInitialized) {
-    return <LoadingScreen />;
-  }
-
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <RouterProvider router={router} />
-    </Suspense>
-  );
+  // Restore the session in the background; protected routes wait for it,
+  // public pages render immediately.
+  useGetCurrentUser();
+  return <RouterProvider router={router} />;
 }
 
 export default App;

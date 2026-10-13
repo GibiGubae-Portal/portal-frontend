@@ -1,6 +1,7 @@
 // src/components/forms/UserForm.tsx
 import { useState, ChangeEvent, FormEvent, memo } from "react";
 import { X } from "lucide-react";
+import Swal from "sweetalert2";
 import { UniversityUser, User } from "../../types";
 
 interface UserFormProps {
@@ -8,6 +9,7 @@ interface UserFormProps {
   initialData: User | null;
   onCancel: () => void;
   onSubmit: (user: User) => void;
+  isSubmitting?: boolean;
 }
 
 const defaultUser: User = {
@@ -18,7 +20,7 @@ const defaultUser: User = {
   gender: "Male",
   baptismalname: "",
   phone: "",
-  birthdate: new Date(),
+  birthdate: "",
   useremail: null,
   telegram_username: "",
   nationality: "Ethiopian",
@@ -92,7 +94,7 @@ const region_enum = [
   ["Central_Ethiopia_Region", "Central Ethiopia Region"],
   ["South_Ethiopia_Region", "South Ethiopia Region"],
   ["Harari", "Harari"],
-  ["not_specified", "Not Specified"],
+  ["Not_Specified", "Not Specified"],
 ];
 
 const mother_tongue_enum = [
@@ -100,7 +102,7 @@ const mother_tongue_enum = [
   ["Oromifa", "Oromifa"],
   ["Tigrigna", "Tigrigna"],
   ["English", "English"],
-  ["not_specified", "Not Specified"],
+  ["Not_Specified", "Not Specified"],
   ["Other", "Other"],
 ];
 
@@ -182,8 +184,46 @@ function getUniversityUserValue<K extends keyof UniversityUser>(
   return String(value);
 }
 
-function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
-  const [formData, setFormData] = useState<User>(initialData || defaultUser);
+const toDateInputValue = (value: Date | string): string => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().split("T")[0];
+};
+
+const normalizeEnum = (value: string | undefined, fallback: string) =>
+  !value || value === "not_specified" ? fallback : value;
+
+/**
+ * Builds a complete form state from an API user: older records may have null
+ * text fields or no university record at all, which must not crash the form.
+ */
+const toFormState = (user: User | null): User => {
+  if (!user) return { ...defaultUser, universityusers: { ...defaultUser.universityusers! } };
+  return {
+    ...defaultUser,
+    ...user,
+    middlename: user.middlename ?? "",
+    baptismalname: user.baptismalname === "None" ? "" : user.baptismalname ?? "",
+    telegram_username:
+      user.telegram_username === "not_specified" ? "" : user.telegram_username ?? "",
+    zonename: user.zonename === "not_specified" ? "" : user.zonename ?? "",
+    useremail: user.useremail === "not_specified" ? null : user.useremail ?? null,
+    region: normalizeEnum(user.region, "Not_Specified") as User["region"],
+    mothertongue: normalizeEnum(user.mothertongue, "Not_Specified") as User["mothertongue"],
+    universityusers: {
+      ...defaultUser.universityusers!,
+      ...(user.universityusers ?? {}),
+    },
+  };
+};
+
+function UserForm({
+  mode,
+  initialData,
+  onCancel,
+  onSubmit,
+  isSubmitting = false,
+}: UserFormProps) {
+  const [formData, setFormData] = useState<User>(() => toFormState(initialData));
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -215,38 +255,37 @@ function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
   const validateForm = (): string[] => {
     const newErrors: string[] = [];
 
-    if (!formData.studentid.trim()) newErrors.push("Student ID is required.");
-    else if (formData.studentid.includes("/"))
-      newErrors.push("Student ID cannot contain '/'. Use '-' only.");
+    const studentId = (formData.studentid ?? "").trim();
+    if (!studentId) newErrors.push("Student ID is required.");
+    else if (/[/\\?#%]/.test(studentId))
+      newErrors.push("Student ID cannot contain '/', '\\', '?', '#' or '%'. Use '-' instead.");
 
-    if (!formData.firstname.trim()) newErrors.push("First Name is required.");
-    if (!formData.lastname.trim()) newErrors.push("Father's Name is required.");
-    if (!formData.phone.trim()) newErrors.push("Phone number is required.");
-    else if (!/^(\+251|0)9\d{8}$/.test(formData.phone.replace(/\s/g, "")))
+    if (!(formData.firstname ?? "").trim()) newErrors.push("First Name is required.");
+    if (!(formData.lastname ?? "").trim()) newErrors.push("Father's Name is required.");
+    const phone = (formData.phone ?? "").replace(/\s/g, "");
+    if (!phone) newErrors.push("Phone number is required.");
+    else if (!/^(\+251|0)[79]\d{8}$/.test(phone))
       newErrors.push(
-        "Invalid Ethiopian phone number (e.g., +251911223344 or 0911223344)."
+        "Invalid Ethiopian phone number (e.g., +251911223344, 0911223344 or 0711223344)."
       );
 
-    if (!formData.nationality.trim())
+    if (!(formData.nationality ?? "").trim())
       newErrors.push("Nationality is required.");
 
-    if (
-      formData.useremail &&
-      formData.useremail !== "not_specified" &&
-      formData.useremail.trim() !== null
-    ) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.useremail))
-        newErrors.push("Please enter a valid email address.");
+    const birthdate = new Date(formData.birthdate);
+    if (Number.isNaN(birthdate.getTime())) newErrors.push("Birthdate is required.");
+    else if (birthdate > new Date()) newErrors.push("Birthdate cannot be in the future.");
+
+    const email = (formData.useremail ?? "").trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.push("Please enter a valid email address.");
     }
 
     if (!formData.universityusers?.departmentname?.trim())
       newErrors.push("Department name is required.");
 
-    if (
-      !formData.universityusers?.batch ||
-      formData.universityusers.batch <= 1900
-    )
+    const batch = Number(formData.universityusers?.batch);
+    if (!Number.isInteger(batch) || batch <= 1900 || batch > 2200)
       newErrors.push("Valid batch year is required (e.g., 2016).");
 
     if (
@@ -262,39 +301,48 @@ function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
+    if (isSubmitting) return;
+
     const newErrors = validateForm();
     if (newErrors.length > 0) {
-      const visibleErrors = newErrors.filter(Boolean);
-      alert(
-        "Please fix the following errors:\n\n" +
-          visibleErrors.map((e) => `• ${e}`).join("\n")
-      );
+      const list = document.createElement("ul");
+      list.style.textAlign = "left";
+      for (const message of newErrors) {
+        const item = document.createElement("li");
+        item.textContent = `• ${message}`;
+        list.appendChild(item);
+      }
+      Swal.fire({
+        icon: "warning",
+        title: "Please fix the following",
+        html: list,
+      });
       return;
     }
 
+    const university = formData.universityusers!;
+    const text = (value: string | null | undefined) => (value ?? "").trim();
     // Final cleanup before submit
     const cleanedData: User = {
       ...formData,
-      studentid: formData.studentid.trim(),
-      firstname: formData.firstname.trim(),
-      middlename: formData.middlename.trim(),
-      lastname: formData.lastname.trim(),
+      studentid: text(formData.studentid),
+      firstname: text(formData.firstname),
+      middlename: text(formData.middlename),
+      lastname: text(formData.lastname),
+      baptismalname: text(formData.baptismalname),
       phone: formData.phone.replace(/\s/g, ""),
-      useremail: formData?.useremail?.trim() || null,
-      telegram_username: formData.telegram_username.trim(),
-      nationality: formData.nationality.trim(),
-      birthdate: new Date(formData.birthdate),
+      useremail: text(formData.useremail) || null,
+      telegram_username: text(formData.telegram_username),
+      zonename: text(formData.zonename),
+      nationality: text(formData.nationality),
+      birthdate: toDateInputValue(formData.birthdate),
       universityusers: {
-        ...formData.universityusers!,
-        departmentname: formData.universityusers!.departmentname.trim(),
-        batch: Number(formData.universityusers!.batch),
-        confessionfather:
-          formData.universityusers!.confessionfather?.trim() || "Not Specified",
-        mealcard: formData.universityusers!.mealcard?.trim() || "Not Specified",
-        role:
-          formData.universityusers!.participation === "None"
-            ? "None"
-            : formData.universityusers!.role,
+        ...university,
+        departmentname: text(university.departmentname),
+        batch: Number(university.batch),
+        confessionfather: text(university.confessionfather) || "Not Specified",
+        mealcard: text(university.mealcard) || "Not Specified",
+        role: university.participation === "None" ? "None" : university.role,
       },
     };
 
@@ -308,6 +356,7 @@ function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
           {mode === "add" ? "Add New User" : "Edit User"}
         </h3>
         <button
+          type="button"
           onClick={onCancel}
           className="text-gray-400 hover:text-gray-600"
           aria-label="Close form"
@@ -332,11 +381,10 @@ function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
                 name={key as keyof User}
                 value={
                   key === "birthdate"
-                    ? new Date(formData[key as keyof User] as Date)
-                        .toISOString()
-                        .split("T")[0]
+                    ? toDateInputValue(formData.birthdate)
                     : (formData[key as keyof User] as string) ?? ""
                 }
+                max={key === "birthdate" ? toDateInputValue(new Date()) : undefined}
                 onChange={handleChange}
                 required={[
                   "studentid",
@@ -596,9 +644,14 @@ function UserForm({ mode, initialData, onCancel, onSubmit }: UserFormProps) {
           </button>
           <button
             type="submit"
-            className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+            disabled={isSubmitting}
+            className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {mode === "add" ? "Add User" : "Update User"}
+            {isSubmitting
+              ? "Saving..."
+              : mode === "add"
+                ? "Add User"
+                : "Update User"}
           </button>
         </div>
       </form>

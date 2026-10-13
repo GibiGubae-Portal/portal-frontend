@@ -32,10 +32,10 @@ const showSuccess = (msg: string) =>
     text: msg,
   });
 
-const showError = (msg: string) =>
+const showError = (title: string, msg: string) =>
   Swal.fire({
     icon: "error",
-    title: "Operation Failed",
+    title,
     text: msg,
   });
 
@@ -79,8 +79,9 @@ export const addAdmin = createAsyncThunk<
     }
     return rejectWithValue(res.message || "Failed to add admin");
   } catch (err) {
-    await showError("Failed to add admin");
-    return rejectWithValue(extractError(err));
+    const message = extractError(err);
+    await showError("Failed to add admin", message);
+    return rejectWithValue(message);
   }
 });
 
@@ -96,7 +97,7 @@ export const updateAdmin = createAsyncThunk<
       const res = await putRequest<
         { success: boolean; message?: string },
         Partial<Admin>
-      >(`/admin/${id}`, adminData);
+      >(`/admin/${encodeURIComponent(id)}`, adminData);
 
       if (res.success) {
         await showSuccess("Admin updated successfully");
@@ -105,8 +106,9 @@ export const updateAdmin = createAsyncThunk<
       }
       return rejectWithValue(res.message || "Can't edit admin");
     } catch (err) {
-      await showError("Failed to update admin");
-      return rejectWithValue(extractError(err));
+      const message = extractError(err);
+      await showError("Failed to update admin", message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -117,7 +119,7 @@ export const deleteAdmin = createAsyncThunk<void, string, AsyncThunkConfig>(
   async (id, { rejectWithValue, dispatch }) => {
     try {
       const res = await deleteRequest<{ success: boolean; message?: string }>(
-        `/admin/${id}`
+        `/admin/${encodeURIComponent(id)}`
       );
 
       if (res.success) {
@@ -127,8 +129,9 @@ export const deleteAdmin = createAsyncThunk<void, string, AsyncThunkConfig>(
       }
       return rejectWithValue(res.message || "Failed to delete admin");
     } catch (err) {
-      await showError("Failed to delete admin");
-      return rejectWithValue(extractError(err));
+      const message = extractError(err);
+      await showError("Failed to delete admin", message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -148,10 +151,7 @@ const adminSlice = createSlice({
         fetchAdmins.fulfilled,
         (state, action: PayloadAction<Admin[]>) => {
           state.loading = false;
-          state.admins = action.payload.map((admin) => ({
-            ...admin,
-            adminpassword: "", // prevent leaking password
-          }));
+          state.admins = action.payload;
         }
       )
       .addCase(fetchAdmins.rejected, (state, action) => {

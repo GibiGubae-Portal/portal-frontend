@@ -1,5 +1,6 @@
-import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import { api } from "../../api/api";
+import { createAsyncThunk, createSlice, isPending, isRejected } from "@reduxjs/toolkit";
+import Swal from "sweetalert2";
+import { api, getErrorMessage } from "../../api/api";
 import { Role } from "../../types";
 
 export interface RolesState {
@@ -14,61 +15,72 @@ const initialState: RolesState = {
   error: null,
 };
 
-export const fetchRoles = createAsyncThunk(
+type RoleResponse<T> = { success: boolean; data: T; message?: string };
+type ThunkConfig = { rejectValue: string };
+
+const notifySuccess = (title: string) =>
+  Swal.fire({ icon: "success", title, timer: 1500, showConfirmButton: false });
+
+const notifyFailure = (title: string, message: string) =>
+  Swal.fire({ icon: "error", title, text: message });
+
+export const fetchRoles = createAsyncThunk<Role[], void, ThunkConfig>(
   "roles/fetchRoles",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get("/role");
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to fetch roles",
-      );
+      const response = await api.get<RoleResponse<Role[]>>("/role");
+      return Array.isArray(response.data.data) ? response.data.data : [];
+    } catch (error) {
+      return rejectWithValue(getErrorMessage(error, "Failed to fetch roles"));
     }
   },
 );
 
-export const addRole = createAsyncThunk(
+export const addRole = createAsyncThunk<Role, Partial<Role>, ThunkConfig>(
   "roles/addRole",
-  async (roleData: Partial<Role>, { rejectWithValue }) => {
+  async (roleData, { rejectWithValue }) => {
     try {
-      const response = await api.post("/role", roleData);
+      const response = await api.post<RoleResponse<Role>>("/role", roleData);
+      notifySuccess("Role created");
       return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to add role",
-      );
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to add role");
+      notifyFailure("Failed to add role", message);
+      return rejectWithValue(message);
     }
   },
 );
 
-export const updateRole = createAsyncThunk(
-  "roles/updateRole",
-  async (
-    { id, roleData }: { id: number; roleData: Partial<Role> },
-    { rejectWithValue },
-  ) => {
-    try {
-      const response = await api.put(`/role/${id}`, roleData);
-      return response.data.data;
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to update role",
-      );
-    }
-  },
-);
+export const updateRole = createAsyncThunk<
+  Role,
+  { id: number; roleData: Partial<Role> },
+  ThunkConfig
+>("roles/updateRole", async ({ id, roleData }, { rejectWithValue }) => {
+  try {
+    // The API rejects the id field in the body; only send editable fields.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _ignored, ...changes } = roleData;
+    const response = await api.put<RoleResponse<Role>>(`/role/${id}`, changes);
+    notifySuccess("Role updated");
+    return response.data.data;
+  } catch (error) {
+    const message = getErrorMessage(error, "Failed to update role");
+    notifyFailure("Failed to update role", message);
+    return rejectWithValue(message);
+  }
+});
 
-export const deleteRole = createAsyncThunk(
+export const deleteRole = createAsyncThunk<number, number, ThunkConfig>(
   "roles/deleteRole",
-  async (id: number, { rejectWithValue }) => {
+  async (id, { rejectWithValue }) => {
     try {
       await api.delete(`/role/${id}`);
+      notifySuccess("Role deleted");
       return id;
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to delete role",
-      );
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to delete role");
+      notifyFailure("Failed to delete role", message);
+      return rejectWithValue(message);
     }
   },
 );
@@ -83,60 +95,30 @@ const rolesSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Fetch Roles
-      .addCase(fetchRoles.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchRoles.fulfilled, (state, action: PayloadAction<Role[]>) => {
+      .addCase(fetchRoles.fulfilled, (state, action) => {
         state.loading = false;
         state.roles = action.payload;
       })
-      .addCase(fetchRoles.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      // Add Role
-      .addCase(addRole.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(addRole.fulfilled, (state, action: PayloadAction<Role>) => {
+      .addCase(addRole.fulfilled, (state, action) => {
         state.loading = false;
         state.roles.push(action.payload);
       })
-      .addCase(addRole.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      // Update Role
-      .addCase(updateRole.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(updateRole.fulfilled, (state, action: PayloadAction<Role>) => {
+      .addCase(updateRole.fulfilled, (state, action) => {
         state.loading = false;
         const index = state.roles.findIndex((r) => r.id === action.payload.id);
-        if (index !== -1) {
-          state.roles[index] = action.payload;
-        }
+        if (index !== -1) state.roles[index] = action.payload;
       })
-      .addCase(updateRole.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      // Delete Role
-      .addCase(deleteRole.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(deleteRole.fulfilled, (state, action: PayloadAction<number>) => {
+      .addCase(deleteRole.fulfilled, (state, action) => {
         state.loading = false;
         state.roles = state.roles.filter((r) => r.id !== action.payload);
       })
-      .addCase(deleteRole.rejected, (state, action) => {
+      .addMatcher(isPending(fetchRoles, addRole, updateRole, deleteRole), (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addMatcher(isRejected(fetchRoles, addRole, updateRole, deleteRole), (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        state.error = action.payload ?? "Request failed";
       });
   },
 });

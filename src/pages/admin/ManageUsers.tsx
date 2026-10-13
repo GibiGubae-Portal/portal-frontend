@@ -12,15 +12,15 @@ import type { AppDispatch, RootState } from "../../app/store";
 import { DEFAULT_PERMISSIONS, EMPTY_USER_FILTERS, User, UserFilters } from "../../types";
 import UserForm from "../../components/admin/UserForm";
 import UserDetail from "../../components/admin/UserDetail";
-import LoadingScreen from "../../components/ui/LoadingScreen";
 import Swal from "sweetalert2";
 import { memo } from "react";
 import Pagination from "../../components/Pagination";
 import FilterModal from "../../components/FilterModal";
-import ExportModal, { EXPORTABLE_COLUMNS } from "../../components/ExportModal";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { getUsers } from "../../service/userApi";
+import ExportModal from "../../components/ExportModal";
+import { EXPORTABLE_COLUMNS } from "../../components/exportColumns";
+import { getUsers, MAX_PAGE_SIZE } from "../../service/userApi";
+import useDebounce from "../../customhook/useDebounce";
+import { escapeHtml, humanize } from "../../util/utils";
 import headerLogo from "../../assets/headerLogo.png";
 import logo from "../../assets/logo.png";
 
@@ -51,7 +51,6 @@ const UserRow = memo(
     canDelete: boolean;
   }) => (
     <tr
-      key={user.userid}
       onClick={() => onView(user)}
       className="hover:bg-gray-100 transition-colors cursor-pointer text-sm"
     >
@@ -114,6 +113,8 @@ const ManageUsers = () => {
   const {
     users = [],
     loading,
+    saving,
+    error: fetchError,
     pagination,
   } = useSelector((state: RootState) => state.user);
   const { currentUserData } = useSelector((state: RootState) => state.auth);
@@ -128,6 +129,7 @@ const ManageUsers = () => {
 
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const debouncedSearch = useDebounce(searchInput, 400);
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -137,13 +139,14 @@ const ManageUsers = () => {
   const [pendingExport, setPendingExport] = useState<{ columns: string[], format: "PDF" | "DOC", title: string } | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setAppliedSearch(searchInput);
-      setPage(1);
-    }, 3000);
+    setAppliedSearch(debouncedSearch.trim());
+    setPage(1);
+  }, [debouncedSearch]);
 
-    return () => clearTimeout(timer);
-  }, [searchInput]);
+  const applyFilters = useCallback((next: UserFilters) => {
+    setFilters(next);
+    setPage(1);
+  }, []);
 
   // Convert null filter values to undefined dynamically to automatically support future filters
   const toFetchParams = useCallback(
@@ -160,11 +163,6 @@ const ManageUsers = () => {
     },
     [page, limit, appliedSearch, filters],
   );
-
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [filters]);
 
   useEffect(() => {
     dispatch(fetchUsers(toFetchParams()));
@@ -193,11 +191,11 @@ const ManageUsers = () => {
       );
 
       let currentPage = 1;
-      let allUsers = [];
+      let allUsers: User[] = [];
       
       const response = await getUsers({
-        page: currentPage, 
-        limit: 100,
+        page: currentPage,
+        limit: MAX_PAGE_SIZE,
         q: appliedSearch || undefined,
         ...dynamicFilters
       });
@@ -212,8 +210,8 @@ const ManageUsers = () => {
       for (currentPage = 2; currentPage <= totalPages; currentPage++) {
         Swal.update({ text: `Fetching data... ${Math.round(((currentPage - 1) / totalPages) * 100)}%` });
         const nextResponse = await getUsers({
-          page: currentPage, 
-          limit: 100,
+          page: currentPage,
+          limit: MAX_PAGE_SIZE,
           q: appliedSearch || undefined,
           ...dynamicFilters
         });
@@ -231,14 +229,19 @@ const ManageUsers = () => {
             return `${user.firstname || ""} ${user.middlename || ""} ${user.lastname || ""}`.replace(/\s+/g, ' ').trim() || "N/A";
           }
           if (["departmentname", "batch", "sponsorshiptype", "participation", "cafeteriaaccess", "tookcourse", "activitylevel"].includes(c.id)) {
-            return String(user.universityusers?.[c.id as keyof typeof user.universityusers] ?? "N/A");
+            return humanize(user.universityusers?.[c.id as keyof typeof user.universityusers]);
           }
-          return String(user[c.id as keyof User] ?? "N/A");
+          return humanize(user[c.id as keyof User]);
         });
         return [String(index + 1), ...rowData];
       });
 
       if (format === "PDF") {
+        // Loaded on demand: the PDF libraries are large and rarely needed.
+        const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+          import("jspdf"),
+          import("jspdf-autotable"),
+        ]);
         const doc = new jsPDF("landscape");
         let mainLogoImg: HTMLImageElement | null = null;
         let headerImg: HTMLImageElement | null = null;
@@ -288,12 +291,12 @@ const ManageUsers = () => {
             }
           }
         });
-        const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || "users";
         doc.save(`${safeTitle}.pdf`);
       } else {
         const tableHtml = `
           <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-          <head><meta charset='utf-8'><title>${title}</title>
+          <head><meta charset='utf-8'><title>${escapeHtml(title)}</title>
           <style>
             table { border-collapse: collapse; width: 100%; border: 1px solid black; font-family: sans-serif; }
             th, td { border: 1px solid black; padding: 8px; text-align: left; font-size: 14px; }
@@ -301,13 +304,13 @@ const ManageUsers = () => {
           </style>
           </head>
           <body>
-            <h2 style="text-align: center; font-family: sans-serif;">${title}</h2>
+            <h2 style="text-align: center; font-family: sans-serif;">${escapeHtml(title)}</h2>
             <table>
               <thead>
-                <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+                <tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
               </thead>
               <tbody>
-                ${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+                ${rows.map(r => `<tr>${r.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}
               </tbody>
             </table>
           </body>
@@ -317,7 +320,7 @@ const ManageUsers = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || "users";
         link.download = `${safeTitle}.doc`;
         document.body.appendChild(link);
         link.click();
@@ -331,7 +334,7 @@ const ManageUsers = () => {
        Swal.fire({
          icon: "error",
          title: "Export Failed",
-         text: "An error occurred while exporting data."
+         text: error instanceof Error ? error.message : "An error occurred while exporting data."
        });
     }
   }, [appliedSearch]);
@@ -370,6 +373,7 @@ const ManageUsers = () => {
           .then(() => {
             closeModal();
             dispatch(fetchUsers(toFetchParams()));
+            Swal.fire({ icon: "success", title: "User added", timer: 1500, showConfirmButton: false });
           })
           .catch((err) => {
             Swal.fire({
@@ -384,6 +388,7 @@ const ManageUsers = () => {
           .then(() => {
             closeModal();
             dispatch(fetchUsers(toFetchParams()));
+            Swal.fire({ icon: "success", title: "User updated", timer: 1500, showConfirmButton: false });
           })
           .catch((err) => {
             Swal.fire({
@@ -434,14 +439,18 @@ const ManageUsers = () => {
 
   const handleDeleteUser = useCallback(() => {
     if (selectedUser?.studentid) {
-      dispatch(deleteUser(selectedUser.studentid)).then(() => {
-        dispatch(fetchUsers(toFetchParams()));
-      });
+      dispatch(deleteUser(selectedUser.studentid))
+        .unwrap()
+        .then(() => {
+          dispatch(fetchUsers(toFetchParams()));
+          Swal.fire({ icon: "success", title: "User deleted", timer: 1500, showConfirmButton: false });
+        })
+        .catch((err) => {
+          Swal.fire({ icon: "error", title: "Failed to Delete User", text: err || "An unknown error occurred." });
+        });
     }
     closeModal();
   }, [dispatch, selectedUser, closeModal, toFetchParams]);
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <div className="p-4 w-full mx-auto">
@@ -492,7 +501,7 @@ const ManageUsers = () => {
         }}
         filters={filters}
         onApply={(newFilters) => {
-          setFilters(newFilters);
+          applyFilters(newFilters);
           if (pendingExport) {
             handleExport(pendingExport.columns, pendingExport.format, pendingExport.title, newFilters);
             setPendingExport(null);
@@ -512,7 +521,7 @@ const ManageUsers = () => {
               Active Filters:
             </span>
             <button
-              onClick={() => setFilters({ ...EMPTY_USER_FILTERS })}
+              onClick={() => applyFilters({ ...EMPTY_USER_FILTERS })}
               className="text-xs text-blue-600 hover:text-blue-800 underline"
             >
               Clear All
@@ -578,7 +587,7 @@ const ManageUsers = () => {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              setAppliedSearch(searchInput);
+              setAppliedSearch(searchInput.trim());
               setPage(1);
             }
           }}
@@ -599,10 +608,25 @@ const ManageUsers = () => {
       </div>
 
       <div className="mb-3 text-xs text-gray-500">
-        Search applies after 300 ms, or press Enter to search now.
+        Search applies as you type, or press Enter to search now.
       </div>
 
-      <div className="overflow-x-auto bg-white rounded-lg border shadow-sm">
+      {fetchError && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span>{fetchError}</span>
+          <button
+            onClick={() => dispatch(fetchUsers(toFetchParams()))}
+            className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      <div
+        className={`overflow-x-auto bg-white rounded-lg border shadow-sm transition-opacity ${loading ? "opacity-60" : ""}`}
+        aria-busy={loading}
+      >
         <table className="min-w-full divide-y divide-gray-200 text-sm sm:text-base text-left">
           <thead className="bg-gray-50 w-full">
             <tr>
@@ -621,7 +645,7 @@ const ManageUsers = () => {
           <tbody className="divide-y divide-gray-100">
             {users.map((user: User) => (
               <UserRow
-                key={user.userid}
+                key={user.userid ?? user.studentid}
                 user={user}
                 onEdit={(u) => canEditUser(u) && openModal("edit", u)}
                 onDelete={(u) => canDeleteUser(u) && openModal("delete", u)}
@@ -636,7 +660,7 @@ const ManageUsers = () => {
                   colSpan={6}
                   className="px-3 sm:px-6 py-4 text-center text-gray-500"
                 >
-                  {t("admin.users.no_users")}
+                  {loading ? "Loading users..." : t("admin.users.no_users")}
                 </td>
               </tr>
             )}
@@ -663,7 +687,8 @@ const ManageUsers = () => {
                   </button>
                   <button
                     onClick={handleDeleteUser}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 w-full sm:w-auto"
+                    disabled={saving}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-60 w-full sm:w-auto"
                   >
                     {t("forms.yes")}
                   </button>
@@ -678,6 +703,7 @@ const ManageUsers = () => {
                   initialData={selectedUser}
                   onCancel={closeModal}
                   onSubmit={handleSaveUser}
+                  isSubmitting={saving}
                 />
               </div>
             )}

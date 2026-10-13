@@ -1,61 +1,80 @@
 # ፮ኪሎ ግቢ ጉባኤ — 6 Kilo Gibi Gubae
 
-A demo web app showcasing a community / events / parcel-like tracking UI and dashboard experience.
+Public website and admin portal for the 6 Kilo Gibi Gubae student fellowship
+(Addis Ababa University). The public site introduces the fellowship (English /
+Amharic); the admin portal manages member registrations, admins and roles.
 
- Live demo: [https://6kilogbigubae.vercel.app/](https://6kilogbigubae.vercel.app/) (production preview)
+Live: <https://6kilogbigubae.vercel.app>
 
-## Table of Contents
+**Stack:** React 18, TypeScript, Vite, Tailwind CSS, Redux Toolkit, React Router,
+i18next, Recharts. Talks to the [Gbi Gubae API](../Gbi_backend) backend.
 
-## About
+## Getting started
 
-`6 Kilo Gibi Gubae` is a demo web application that provides a modern, responsive UI for community/parcel/event management workflows. The demo highlights an interactive dashboard, item (parcel or event) listing, detail pages, and role-oriented actions (create, update, track).
+```bash
+npm install
+cp .env.example .env.local   # optional
+npm run dev                  # http://localhost:5173
+```
 
-This README gives a complete developer-friendly guide so anyone can clone, run, and extend the app locally, plus sample code for frontend components and a suggested backend API.
+In development, requests to `/api` are proxied to `http://localhost:5500`
+(the backend's default port). Point it elsewhere with `VITE_DEV_API_PROXY`,
+e.g. `VITE_DEV_API_PROXY=https://gbi-backend-h76f.vercel.app npm run dev`.
 
-Live demo title and preview were pulled from the production site. :contentReference[oaicite:1]{index=1}
+## Scripts
 
-## Live Demo
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Type-check and build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | TypeScript only |
+| `npm run lint` | ESLint |
+| `npm test` | Unit & component tests (Vitest + Testing Library) |
 
-Open the hosted demo:
+## How the frontend reaches the API
 
- [https://6kilogbigubae.vercel.app/](https://6kilogbigubae.vercel.app/) — please use it as the reference for intended look & feel. :contentReference[oaicite:2]{index=2}
+The app calls **`/api` on its own origin**. On Vercel, `vercel.json` rewrites
+`/api/*` to the backend deployment, so the httpOnly session cookie is
+first-party and works in every browser (including Safari, which blocks
+third-party cookies).
 
-## Key Features
+> If the backend URL changes, update the `destination` of the `/api/:path*`
+> rewrite in `vercel.json`.
 
-* Responsive dashboard and listing pages
-* Create / edit / delete items (shipments, events or community posts)
-* Item detail views with status and history timeline
-* Search and filter capability (by id, status, or date)
-* Client-focused UX: clear CTA, simple forms, confirmation dialogs
-* Ready for integration with a backend API (examples included below)
+To call a backend on a different origin directly instead, set `VITE_API_URL`
+at build time (the backend must then allow that origin in `FRONTEND_URL`).
 
-## Tech Stack
+## Project layout
 
-Primary technologies assumed for this demo (adjust if your repo differs):
+```
+src/
+  api/            axios client, error messages, global 401 handling
+  app/store.ts    Redux store
+  features/       Redux slices: auth, users, admins, roles
+  service/        typed API helpers
+  pages/          route pages (landing, login, admin/*, superAdmin/*)
+  components/     UI: landing sections, admin forms/tables, modals, ui/*
+  customhook/     useGetCurrentUser (session restore), useDebounce
+  locales/        en / am translations
+  types/          shared TypeScript types
+```
 
-* Frontend : React or Next.js (TypeScript recommended)
-* Styling : Tailwind CSS (or plain CSS with utility classes)
-* State management : Redux Toolkit or React Context
-* HTTP client : Axios or fetch
-* Forms : React Hook Form or controlled components
-* Icons / UI : Heroicons / Font Awesome / custom SVGs
-* Deployment : Vercel
+## Routes
 
-## Design & UX Notes
+| Path | Access |
+| --- | --- |
+| `/` | Public landing page |
+| `/admin/login` | Admin login |
+| `/admin` | Dashboard (any admin) |
+| `/admin/users` | Member management (actions depend on permissions) |
+| `/admin/analytics` | Charts over the members the admin can see |
+| `/admin/superadmin` | Admin management (super admins) |
+| `/admin/manageRoles` | Role management (super admins) |
 
-* Focus on minimal onboarding friction and clear CTAs.
-* Use large tappable areas for mobile and keep forms short.
-* Use subtle motion for state changes (status update, success toast).
-* Keep colors high-contrast for readability and accessibility.
+## Deploying to Vercel
 
-## Getting Started (Full Setup)
-
-Below are detailed steps to run the app locally and an optional minimal backend to simulate API responses.
-
-### Prerequisites
-
-- Node.js (v16+) and npm or yarn
-- Git
-- Optional: MongoDB (local / Atlas) or PostgreSQL if you want to persist data
-
-### Install & Run (Frontend Only)
+1. Import the repository (framework preset: **Vite**). No environment variables
+   are required.
+2. Make sure the `/api/:path*` rewrite in `vercel.json` points at the backend.
+3. Deploy.

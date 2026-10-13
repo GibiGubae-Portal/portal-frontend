@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Role, PERMISSION_META } from "../../types";
+import { Role, Permissions, PERMISSION_META } from "../../types";
 
 interface Props {
   role: Role;
@@ -18,7 +18,7 @@ export default function RoleCard({
   const panelContentRef = useRef<HTMLDivElement | null>(null);
   const [panelMaxHeight, setPanelMaxHeight] = useState("0px");
 
-  const [draftPermissions, setDraftPermissions] = useState<Partial<Role>>({
+  const [draftPermissions, setDraftPermissions] = useState<Permissions>({
     readUsers: role.readUsers,
     registerUsers: role.registerUsers,
     editAnyUser: role.editAnyUser,
@@ -49,7 +49,7 @@ export default function RoleCard({
 
   const hasPermissionChanges = useMemo(() => {
     return PERMISSION_META.some(
-      ({ key }) => (draftPermissions as any)[key] !== (role as any)[key],
+      ({ key }) => draftPermissions[key] !== role[key],
     );
   }, [draftPermissions, role]);
 
@@ -171,11 +171,11 @@ export default function RoleCard({
                   <input
                     type="checkbox"
                     className="sr-only peer"
-                    checked={(draftPermissions as any)[key]}
+                    checked={draftPermissions[key]}
                     onChange={() =>
                       setDraftPermissions((prev) => ({
                         ...prev,
-                        [key]: !(prev as any)[key],
+                        [key]: !prev[key],
                       }))
                     }
                   />

@@ -1,27 +1,19 @@
 import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { AppDispatch, RootState } from "../app/store";
-import { clearAuthState, fetchCurrentUser } from "../features/auth/authSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { fetchCurrentUser } from "../features/auth/authSlice";
 
+/** Restores the session (from the httpOnly cookie) once on app start. */
 export default function useGetCurrentUser() {
-  const dispatch = useDispatch<AppDispatch>();
-  const { isAuthenticated, status, loading, hasInitialized } = useSelector(
-    (state: RootState) => state.auth,
+  const dispatch = useAppDispatch();
+  const { isAuthenticated, status, loading, hasInitialized } = useAppSelector(
+    (state) => state.auth,
   );
-  const pathname = window.location.pathname;
 
   useEffect(() => {
-    if (hasInitialized || status !== "idle") {
-      return;
+    if (!hasInitialized && status === "idle") {
+      dispatch(fetchCurrentUser());
     }
-
-    if (pathname === "/admin/login") {
-      dispatch(clearAuthState());
-      return;
-    }
-
-    dispatch(fetchCurrentUser());
-  }, [dispatch, hasInitialized, pathname, status]);
+  }, [dispatch, hasInitialized, status]);
 
   return {
     hasInitialized,

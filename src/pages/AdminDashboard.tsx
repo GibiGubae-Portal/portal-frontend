@@ -1,10 +1,11 @@
 // AdminDashboard.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { Outlet } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { RootState } from "../app/store";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { Menu, X } from "lucide-react";
+import LoadingScreen from "../components/ui/LoadingScreen";
 
 const AdminDashboard = () => {
   const { currentUserData } = useSelector((state: RootState) => state.auth);
@@ -22,9 +23,9 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setIsMobile(false);
-      }
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setIsSidebarOpen(false);
     };
 
     window.addEventListener("resize", handleResize);
@@ -65,15 +66,17 @@ const AdminDashboard = () => {
         <div className="p-4 sm:p-6">
           <div className="mb-4 sm:mb-6">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
-              Welcome, {currentUserData?.username || "TestAdmin"}
+              Welcome, {currentUserData?.username || "Admin"}
             </h1>
             <p className="text-sm sm:text-base text-gray-600">
-              Student ID: {currentUserData?.studentid || "00000"}
+              Student ID: {currentUserData?.studentid || "-"}
             </p>
           </div>
 
           <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <Outlet />
+            <Suspense fallback={<LoadingScreen />}>
+              <Outlet />
+            </Suspense>
           </div>
         </div>
       </div>

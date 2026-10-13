@@ -1,118 +1,86 @@
-// src/api/api.ts
-import axios, { AxiosRequestConfig } from "axios";
-import { User } from "../types";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 
-interface AxiosError {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  request?: unknown;
-  message?: string;
-}
-
-export interface IResponseObject {
-  message?: string;
-  success: boolean;
-  user?: User & { userid: number };
-}
-
-const normalizeBaseURL = (url: string) => {
-  const trimmedUrl = url.trim().replace(/\/+$/, "");
-  return trimmedUrl.endsWith("/api") ? trimmedUrl : `${trimmedUrl}/api`;
-};
-
-const getBaseURL = () => {
-  const env = import.meta.env as ImportMetaEnv & {
-    BASE_API_URL?: string;
-  };
-
-  const envUrl = env.VITE_API_URL || env.BASE_API_URL;
-  if (envUrl) {
-    return normalizeBaseURL(envUrl);
-  }
-
-  if (import.meta.env.DEV) {
-    return "https://gbi-backend-h76f.vercel.app/api"; // http://localhost:6500/api
-  }
-
-  return "https://gbi-backend-h76f.vercel.app/api"; // http://localhost:6500/api
+/**
+ * By default the app talks to `/api` on its own origin: Vercel rewrites it to
+ * the backend in production (vercel.json) and Vite proxies it in development.
+ * Same-origin requests keep the httpOnly auth cookie first-party, so it isn't
+ * blocked by browsers that reject third-party cookies (e.g. Safari).
+ *
+ * Set VITE_API_URL to call a backend on another origin directly instead.
+ */
+const resolveBaseURL = () => {
+  const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (!configured) return "/api";
+  const trimmed = configured.replace(/\/+$/, "");
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
 };
 
 export const api = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: resolveBaseURL(),
   withCredentials: true,
-  timeout: 20000,
-  headers: {
-    "Content-Type": "application/json",
+  timeout: 30000,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Requests that are expected to 401 and must not trigger a global logout.
+const AUTH_PROBE_URLS = ["/auth/current", "/admin/login", "/auth/logout"];
+
+let onUnauthorized: (() => void) | null = null;
+
+/** Registered once by the store so an expired session logs the user out. */
+export const setUnauthorizedHandler = (handler: () => void) => {
+  onUnauthorized = handler;
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const url = error.config?.url ?? "";
+    if (
+      error.response?.status === 401 &&
+      !AUTH_PROBE_URLS.some((probe) => url.startsWith(probe))
+    ) {
+      onUnauthorized?.();
+    }
+    return Promise.reject(error);
   },
-});
+);
 
-const handleRequestError = (error: AxiosError) => {
-  if (error.response) {
-    throw new Error(error.response.data?.message || "Request failed");
-  } else if (error.request) {
-    throw new Error("Network error - no response received");
-  } else {
-    throw new Error("Request setup error");
+/** Turns any thrown value into a message that is safe to show to users. */
+export const getErrorMessage = (
+  error: unknown,
+  fallback = "Something went wrong. Please try again.",
+): string => {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { message?: unknown } | undefined;
+    if (typeof data?.message === "string" && data.message) return data.message;
+    if (error.code === "ECONNABORTED") {
+      return "The server took too long to respond. Please try again.";
+    }
+    if (!error.response) {
+      return "Cannot reach the server. Check your internet connection.";
+    }
+    return fallback;
   }
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
 };
 
-api.interceptors.request.use((config) => {
-  return config;
-});
+export const getRequest = async <T>(url: string, config?: AxiosRequestConfig) =>
+  (await api.get<T>(url, config)).data;
 
-export const getRequest = async <T>(
+export const postRequest = async <T, D = unknown>(
   url: string,
+  data?: D,
   config?: AxiosRequestConfig,
-): Promise<T> => {
-  try {
-    const response = await api.get<T>(url, config);
-    return response.data;
-  } catch (error) {
-    handleRequestError(error as AxiosError);
-    throw error;
-  }
-};
+) => (await api.post<T>(url, data, config)).data;
 
-export const postRequest = async <IResponseObject, D>(
-  url: string,
-  data: D,
-  config?: AxiosRequestConfig,
-): Promise<IResponseObject> => {
-  try {
-    const response = await api.post<IResponseObject>(url, data, config);
-    return response.data as IResponseObject;
-  } catch (error) {
-    handleRequestError(error as AxiosError);
-    throw error;
-  }
-};
-
-export const putRequest = async <T, D>(
+export const putRequest = async <T, D = unknown>(
   url: string,
   data: D,
   config?: AxiosRequestConfig,
-): Promise<T> => {
-  try {
-    const response = await api.put<T>(url, data, config);
-    return response.data;
-  } catch (error) {
-    handleRequestError(error as AxiosError);
-    throw error;
-  }
-};
+) => (await api.put<T>(url, data, config)).data;
 
-export const deleteRequest = async <T>(
-  url: string,
-  config?: AxiosRequestConfig,
-): Promise<T> => {
-  try {
-    const response = await api.delete<T>(url, config);
-    return response.data;
-  } catch (error) {
-    handleRequestError(error as AxiosError);
-    throw error;
-  }
-};
+export const deleteRequest = async <T>(url: string, config?: AxiosRequestConfig) =>
+  (await api.delete<T>(url, config)).data;

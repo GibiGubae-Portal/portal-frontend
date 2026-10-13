@@ -4,6 +4,7 @@ type TParticipationType =
   | "Education_and_Apostolic_Service_Section"
   | "Accounting_and_Assets_Section"
   | "Development_and_Income_Collection_Section"
+  | "Languages_and_Special_Interests_Section"
   | "Hymns_and_Arts_Section"
   | "Planning_Monitoring_Reports_and_Information_Management_Section"
   | "Professional_and_Community_Development_Section"
@@ -55,7 +56,7 @@ type TRegionType =
   | "Harari"
   | "Not_Specified";
 export interface User {
-  userid?: string;
+  userid?: number;
   studentid: string;
   createdBy?: string | null;
   firstname: string;
@@ -72,12 +73,13 @@ export interface User {
   mothertongue: TMotherTongue;
   zonename: string;
   isphysicallydisabled: TImparment;
-  clergicalstatus?: "Deacon" | "Priest" | "None";
+  clergicalstatus?: "Deacon" | "Priest" | "Other" | "None";
+  createdAt?: string;
   universityusers?: UniversityUser;
 }
 
 export interface UniversityUser {
-  userid?: string;
+  userid?: number;
   departmentname: string;
   sponsorshiptype: "Government" | "Self_Sponsored" | "Scholarship";
   participation: TParticipationType;
@@ -86,15 +88,17 @@ export interface UniversityUser {
   advisors: TAdvisorType;
   role: TRoleType;
   mealcard?: string | null;
-  cafeteriaaccess: boolean;
+  cafeteriaaccess: boolean | null;
   cafeterianame?: string | null;
-  holidayincampus: boolean;
-  tookcourse: boolean;
+  emergencyname?: string | null;
+  emergencyphone?: string | null;
+  holidayincampus: boolean | null;
+  tookcourse: boolean | null;
+  coursetaken?: boolean;
   activitylevel: "Very_Active" | "Active" | "Less_Active" | "Not_Active";
 }
 
 export interface Admin {
-  userid?: string;
   studentid: string;
   adminusername: string;
   adminpassword?: string;
@@ -111,19 +115,19 @@ export interface GetAdminResponse {
   admins: Admin[];
 }
 
-export interface AuthContextType {
-  isAuthenticated: boolean;
-  admin: Admin | null;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
-}
-
-export interface ChartData {
-  name: string;
-  value: number;
-}
-export interface AuthPayload {
-  admin: Admin;
+export interface AnalyticsData {
+  total: number;
+  /** Users whose activity level is Active or Very Active. */
+  activeUsers: number;
+  /** Users holding a role in a section. */
+  withRole: number;
+  participating: number;
+  participationRate: number;
+  participationBreakdown: Record<string, number>;
+  activityBreakdown: Record<string, number>;
+  genderBreakdown: Record<string, number>;
+  batchBreakdown: Record<string, number>;
+  departmentBreakdown: Record<string, number>;
 }
 
 export interface Pagination {
@@ -133,8 +137,6 @@ export interface Pagination {
   limit: number;
   hasNext: boolean;
   hasPrev: boolean;
-  nextUrl?: string;
-  prevUrl?: string;
 }
 
 export interface UsersApiResponse {

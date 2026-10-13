@@ -1,232 +1,142 @@
-// import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
-import { Users, UserCog, BarChart2, Calendar } from "lucide-react";
+import { Users, UserCog, BarChart2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { fetchAnalytics } from "../../features/users/userSlice";
 import LoadingScreen from "../../components/ui/LoadingScreen";
-import { useSelector } from "react-redux";
-import { AppDispatch, RootState } from "../../app/store";
-import Swal from "sweetalert2";
-import { useDispatch } from "react-redux";
-import { useEffect, useRef } from "react";
-import { fetchUsers } from "../../features/users/userSlice";
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: 0.1 * i, duration: 0.5 },
+  }),
+};
+
+const percent = (part: number, total: number) =>
+  total > 0 ? `${((part / total) * 100).toFixed(1)}%` : "0%";
 
 const Dashboard = () => {
-  const { users, pagination, loading, error } = useSelector(
-    (state: RootState) => state.user,
+  const dispatch = useAppDispatch();
+  const { analytics, analyticsLoading, analyticsError } = useAppSelector(
+    (state) => state.user,
   );
-  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
-  const dispatch = useDispatch<AppDispatch>();
-  const hasRetriedEmptyFetch = useRef(false);
-
-  const cardVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: (i: number) => ({
-      opacity: 1,
-      y: 0,
-      transition: {
-        delay: 0.1 * i,
-        duration: 0.5,
-      },
-    }),
-  };
 
   useEffect(() => {
-    // always refresh data when this page mounts; pagination.totalUsers can
-    // become stale if another page fetch used a smaller limit.
-    dispatch(fetchUsers({ page: 1, limit: 1000 }));
+    dispatch(fetchAnalytics());
   }, [dispatch]);
 
-  useEffect(() => {
-    // Retry once only when auth is available but pagination is missing.
-    // This avoids an infinite loop for admins with scoped access and no users yet.
-    if (
-      !loading &&
-      isAuthenticated &&
-      !pagination &&
-      !hasRetriedEmptyFetch.current
-    ) {
-      hasRetriedEmptyFetch.current = true;
-      dispatch(fetchUsers({ page: 1, limit: 1000 }));
-    }
-  }, [dispatch, pagination, loading, isAuthenticated]);
+  if (analyticsLoading && !analytics) return <LoadingScreen />;
 
-  // use the backend-provided total from the pagination object. the UI no
-  // longer relies on `users.length` which only reflects the current page.
-  // if the backend ever provides a dedicated analytics endpoint we could
-  // switch to that value instead, but for now pagination.totalUsers is the
-  // authoritative source.
-  const totalUsers = pagination?.totalUsers ?? 0;
+  const total = analytics?.total ?? 0;
+  const activeUsers = analytics?.activeUsers ?? 0;
+  const participating = analytics?.participating ?? 0;
 
-  // derive counts using the current page as a sample; without a dedicated
-  // summary endpoint we can only estimate total active users by scaling the
-  // page's proportion. this prevents the card from appearing empty when
-  // only a subset is loaded. for true accuracy, fetch statistics from the
-  // server or load all records into a separate slice.
-  const pageActive =
-    users?.filter(
-      (u) =>
-        u.universityusers?.activitylevel === "Active" ||
-        u.universityusers?.activitylevel === "Very_Active",
-    ).length || 0;
+  const cards = [
+    {
+      label: "Total Users",
+      value: total,
+      hint: "View all users",
+      to: "/admin/users",
+      icon: <Users size={24} />,
+      border: "border-liturgical-blue",
+      badge: "bg-liturgical-blue/10 text-liturgical-blue",
+      link: "text-liturgical-blue",
+    },
+    {
+      label: "Active Users",
+      value: activeUsers,
+      hint: `${percent(activeUsers, total)} of total users`,
+      icon: <UserCog size={24} />,
+      border: "border-gold",
+      badge: "bg-gold/10 text-gold",
+      link: "text-gray-600",
+    },
+    {
+      label: "Participation Rate",
+      value: `${analytics?.participationRate ?? 0}%`,
+      hint: `${participating} serving in a section`,
+      to: "/admin/analytics",
+      icon: <BarChart2 size={24} />,
+      border: "border-green-500",
+      badge: "bg-green-500/10 text-green-600",
+      link: "text-green-600",
+    },
+  ];
 
-  const activeUsers =
-    totalUsers && users.length
-      ? Math.round((pageActive / users.length) * totalUsers)
-      : pageActive;
-
-  const participationRate = totalUsers
-    ? ((activeUsers / totalUsers) * 100).toFixed(2)
-    : "0.00";
-
-  if (loading) return <LoadingScreen />;
-
-  if (error) {
-    (async () => {
-      await Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: error,
-      });
-    })();
-  }
   return (
     <div>
       <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
 
+      {analyticsError && (
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span>{analyticsError}</span>
+          <button
+            onClick={() => dispatch(fetchAnalytics())}
+            className="rounded-md border border-red-300 bg-white px-3 py-1 font-medium hover:bg-red-100"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <motion.div
-          className="bg-white rounded-lg shadow-md p-6 border-l-4 border-liturgical-blue"
-          custom={0}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-gray-500 font-medium">Total Users</p>
-              <h3 className="text-3xl font-bold mt-1">{totalUsers}</h3>
-            </div>
-            <div className="bg-liturgical-blue/10 p-3 rounded-full text-liturgical-blue">
-              <Users size={24} />
-            </div>
-          </div>
-          <Link
-            to="/admin/users"
-            className="text-sm text-liturgical-blue mt-4 inline-block hover:underline"
+        {cards.map((card, i) => (
+          <motion.div
+            key={card.label}
+            className={`bg-white rounded-lg shadow-md p-6 border-l-4 ${card.border}`}
+            custom={i}
+            initial="hidden"
+            animate="visible"
+            variants={cardVariants}
           >
-            View all users
-          </Link>
-        </motion.div>
-
-        <motion.div
-          className="bg-white rounded-lg shadow-md p-6 border-l-4 border-gold"
-          custom={1}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-gray-500 font-medium">Active Users</p>
-              <h3 className="text-3xl font-bold mt-1">
-                {users.filter(
-                  (u) =>
-                    u.universityusers?.activitylevel === "Active" ||
-                    u.universityusers?.activitylevel === "Very_Active",
-                ).length || 0}
-              </h3>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-gray-500 font-medium">{card.label}</p>
+                <h3 className="text-3xl font-bold mt-1">{card.value}</h3>
+              </div>
+              <div className={`p-3 rounded-full ${card.badge}`}>{card.icon}</div>
             </div>
-            <div className="bg-gold/10 p-3 rounded-full text-gold">
-              <UserCog size={24} />
-            </div>
-          </div>
-          <div className="mt-4 text-sm text-gray-600">
-            {totalUsers > 0
-              ? (
-                  (users.filter(
-                    (u) =>
-                      u.universityusers?.activitylevel === "Active" ||
-                      u.universityusers?.activitylevel === "Very_Active",
-                  ).length /
-                    totalUsers) *
-                  100
-                ).toFixed(2) + "% of total users"
-              : "0.00% of total users"}
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500"
-          custom={2}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-gray-500 font-medium">Participation Rate</p>
-              <h3 className="text-3xl font-bold mt-1">{participationRate}</h3>
-            </div>
-            <div className="bg-green-500/10 p-3 rounded-full text-green-500">
-              <BarChart2 size={24} />
-            </div>
-          </div>
-          <Link
-            to="/admin/analytics"
-            className="text-sm text-green-500 mt-4 inline-block hover:underline"
-          >
-            View analytics
-          </Link>
-        </motion.div>
+            {card.to ? (
+              <Link
+                to={card.to}
+                className={`text-sm mt-4 inline-block hover:underline ${card.link}`}
+              >
+                {card.hint}
+              </Link>
+            ) : (
+              <p className={`text-sm mt-4 ${card.link}`}>{card.hint}</p>
+            )}
+          </motion.div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <motion.div
-          className="bg-white rounded-lg shadow-md p-6"
-          custom={3}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-        >
-          <h3 className="text-xl font-semibold mb-4 flex items-center">
-            <Calendar size={20} className="mr-2 text-liturgical-blue" />
-            Next Event
-          </h3>
-        </motion.div>
-
-        <motion.div
-          className="bg-white rounded-lg shadow-md p-6"
-          custom={4}
-          initial="hidden"
-          animate="visible"
-          variants={cardVariants}
-        >
-          <h3 className="text-xl font-semibold mb-4">Quick Actions</h3>
-
-          <div className="space-y-3">
+      <motion.div
+        className="bg-white rounded-lg shadow-md p-6"
+        custom={3}
+        initial="hidden"
+        animate="visible"
+        variants={cardVariants}
+      >
+        <h3 className="text-xl font-semibold mb-4">Quick Actions</h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { to: "/admin/users", label: "Manage Users" },
+            { to: "/admin/analytics", label: "View Analytics" },
+            { to: "/", label: "Visit Public Site" },
+          ].map(({ to, label }) => (
             <Link
-              to="/admin/users"
-              className="block w-full text-left px-4 py-3 rounded-md bg-liturgical-blue/5 hover:bg-liturgical-blue/10 transition-colors"
+              key={to}
+              to={to}
+              className="block px-4 py-3 rounded-md bg-liturgical-blue/5 hover:bg-liturgical-blue/10 transition-colors"
             >
-              Manage Users
+              {label}
             </Link>
-
-            <Link
-              to="/admin/analytics"
-              className="block w-full text-left px-4 py-3 rounded-md bg-liturgical-blue/5 hover:bg-liturgical-blue/10 transition-colors"
-            >
-              View Analytics
-            </Link>
-
-            <Link
-              to="/"
-              className="block w-full text-left px-4 py-3 rounded-md bg-liturgical-blue/5 hover:bg-liturgical-blue/10 transition-colors"
-            >
-              Visit Public Site
-            </Link>
-          </div>
-        </motion.div>
-      </div>
+          ))}
+        </div>
+      </motion.div>
     </div>
   );
 };
