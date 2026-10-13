@@ -19,7 +19,7 @@ npm run dev                  # http://localhost:5173
 
 In development, requests to `/api` are proxied to `http://localhost:5500`
 (the backend's default port). Point it elsewhere with `VITE_DEV_API_PROXY`,
-e.g. `VITE_DEV_API_PROXY=https://gbi-backend-h76f.vercel.app npm run dev`.
+e.g. `VITE_DEV_API_PROXY=https://6kilogbigubaebackend.vercel.app npm run dev`.
 
 ## Scripts
 
