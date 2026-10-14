@@ -20,7 +20,7 @@ describe("UserDetail", () => {
     } as unknown as User;
 
     render(<UserDetail user={sparse} onClose={vi.fn()} />);
-    expect(screen.getByText("Abebe Tesfaye")).toBeInTheDocument();
+    expect(screen.getByText("Abebe Tesfaye")).toBeInTheDocument(); // middlename is null
     expect(screen.getAllByText("N/A").length).toBeGreaterThan(3);
   });
 });

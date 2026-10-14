@@ -20,7 +20,7 @@ import ExportModal from "../../components/ExportModal";
 import { EXPORTABLE_COLUMNS } from "../../components/exportColumns";
 import { getUsers, MAX_PAGE_SIZE } from "../../service/userApi";
 import useDebounce from "../../customhook/useDebounce";
-import { escapeHtml, humanize } from "../../util/utils";
+import { escapeHtml, fullName, humanize } from "../../util/utils";
 import headerLogo from "../../assets/headerLogo.png";
 import logo from "../../assets/logo.png";
 
@@ -226,7 +226,7 @@ const ManageUsers = () => {
       const rows = dataToExport.map((user, index) => {
         const rowData = EXPORTABLE_COLUMNS.filter((c: { id: string, label: string }) => selectedColumns.includes(c.id)).map((c: { id: string, label: string }) => {
           if (c.id === "fullname") {
-            return `${user.firstname || ""} ${user.middlename || ""} ${user.lastname || ""}`.replace(/\s+/g, ' ').trim() || "N/A";
+            return fullName(user) || "N/A";
           }
           if (["departmentname", "batch", "sponsorshiptype", "participation", "cafeteriaaccess", "tookcourse", "activitylevel"].includes(c.id)) {
             return humanize(user.universityusers?.[c.id as keyof typeof user.universityusers]);

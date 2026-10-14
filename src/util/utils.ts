@@ -22,3 +22,18 @@ export const escapeHtml = (value: unknown): string =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+
+/**
+ * Full name in Ethiopian order: first name, father's name, grandfather's name.
+ * In the data model `lastname` is the father's name and `middlename` the
+ * grandfather's name.
+ */
+export const fullName = (user: {
+  firstname?: string | null;
+  middlename?: string | null;
+  lastname?: string | null;
+}): string =>
+  [user.firstname, user.lastname, user.middlename]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");

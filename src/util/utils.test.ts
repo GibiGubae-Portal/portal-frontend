@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml, formatDate, humanize } from "./utils";
+import { escapeHtml, formatDate, fullName, humanize } from "./utils";
 
 describe("humanize", () => {
   it("replaces underscores and handles empty values", () => {
@@ -27,5 +27,19 @@ describe("escapeHtml", () => {
       "&lt;img src=x onerror=&quot;a&quot;&gt;&amp;&#39;",
     );
     expect(escapeHtml(null)).toBe("");
+  });
+});
+
+describe("fullName", () => {
+  it("orders first, father's (lastname), grandfather's (middlename)", () => {
+    expect(fullName({ firstname: "Abebe", middlename: "Kebede", lastname: "Tesfaye" })).toBe(
+      "Abebe Tesfaye Kebede",
+    );
+  });
+
+  it("skips missing parts and trims spaces", () => {
+    expect(fullName({ firstname: " Abebe ", middlename: null, lastname: "Tesfaye " })).toBe(
+      "Abebe Tesfaye",
+    );
   });
 });

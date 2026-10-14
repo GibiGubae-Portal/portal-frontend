@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { User } from "../../types";
-import { formatDate, humanize } from "../../util/utils";
+import { formatDate, fullName, humanize } from "../../util/utils";
 
 const yesNo = (value: boolean | null | undefined) => (value ? "Yes" : "No");
 const orNA = (value: string | null | undefined) =>
@@ -26,7 +26,7 @@ const UserDetail = ({ user, onClose }: UserDetailProps) => {
           <h4 className="text-lg font-semibold mb-3 text-liturgical-blue">Personal Information</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DetailField label="Student ID" value={user.studentid} />
-            <DetailField label="Full Name" value={[user.firstname, user.middlename, user.lastname].filter(Boolean).join(" ")} />
+            <DetailField label="Full Name" value={fullName(user)} />
             <DetailField label="Baptismal Name" value={orNA(user.baptismalname)} />
             <DetailField label="Gender" value={user.gender} />
             <DetailField label="Phone" value={user.phone} />
